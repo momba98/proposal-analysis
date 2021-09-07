@@ -13,7 +13,7 @@ import bokeh.models as bkm
 from bokeh.models import ColumnDataSource, DataRange1d, Plot, LinearAxis, Grid, Legend, LegendItem
 from bokeh.models import NumeralTickFormatter
 
-st.set_page_config(layout="centered")
+st.set_page_config(layout="wide")
 
 def download_button(object_to_download, download_filename, button_text):
     """
@@ -83,7 +83,7 @@ uploaded_file = c1.file_uploader(
     accept_multiple_files=True
 )
 
-with open('btg2.csv', 'r') as f:
+with open('btg 2.csv', 'r') as f:
     dl_button = download_button(f.read(), 'arquivo_proposta_exemplo.csv', 'Baixe aqui o arquivo exemplo de proposta!')
     c1.markdown(dl_button, unsafe_allow_html=True)
 
@@ -95,16 +95,31 @@ if uploaded_file is not None:
     arquivos_giga = {}
 
     for arquivo in uploaded_file:
-        arquivos[arquivo.name] = pd.read_csv(arquivo, sep=';', decimal=',')
+        nome_arquivo = arquivo.name.replace('_',' ')[:-4]
+        arquivos[nome_arquivo] = pd.read_csv(arquivo, sep=';', decimal=',')
 
-    for nome,tabela in arquivos.items():
+    for index,nome in arquivos.items():
+        delete = st.text_input(f'Qual é a base ativa de {index}?')
+        if delete:
+            arquivos[index] = (arquivos[index],delete)
+            #to_be_deleted.add(delete)
+        if not delete:
+            arquivos[index] = (arquivos[index],0)
 
-        st.write(nome)
+    n = st.selectbox(
+        'Intervalo de validação dos valores de TM e Receita: ',
+        options=['',100,500,1000,2500,5000,10000],
+    )
+
+    for nome,(tabela,base) in arquivos.items():
+
+        #st.write(nome, tabela, base)
 
         tabela['QtdPontos'] = tabela['Ate']-tabela['A partir de']+1
         tabela['ValorIntervalo'] = tabela['Valor BRL'] * tabela['QtdPontos']
         tabela['CumValorIntervalo'] = tabela['ValorIntervalo'].cumsum()
         tabela['TM'] = tabela['CumValorIntervalo']/tabela['Ate']
+        tabela['Base'] = np.nan
 
         tabela.loc[-1] = ''
         tabela.loc[-1]['Ate'] = 1
@@ -118,15 +133,36 @@ if uploaded_file is not None:
 
         tabela.sort_index(inplace=True)
 
-        st.write(tabela['Ate'])
+        #st.write(tabela['Ate'])
 
-        giga_tabela = pd.DataFrame(data=np.arange(tabela['Ate'].min()-1,tabela['Ate'].max()+2500,2500),columns=['Ate'])
+        # #n = 1
+        # a = np.array(tabela['Ate'].astype(float))
+        # new_size = a.size + (a.size - 1) * n
+        # x = np.linspace(a.min(), a.max(), new_size)
+        # xp = np.linspace(a.min(), a.max(), a.size)
+        # fp = a
+        # result = np.interp(x, xp, fp)
+        #st.write('interpol', result)
+
+        if n == '':
+            data = tabela['Ate']
+        else:
+            data = np.arange(tabela['Ate'].min()-1,tabela['Ate'].max()+n,n)
+
+        giga_tabela = pd.DataFrame(data=data,columns=['Ate']) #np.arange(tabela['Ate'].min()-1,tabela['Ate'].max()+2500,2500
 
         giga_tabela.loc[0] = 1
 
-        teste = giga_tabela.merge(tabela[['Ate','Intervalo','CumValorIntervalo','TM']], on='Ate', how='outer')
+        teste = giga_tabela.merge(tabela[['Ate','Intervalo','CumValorIntervalo','TM', 'Base']], on='Ate', how='outer')
 
-        #st.write(teste)
+        #st.write('aqui',teste)
+
+        teste = teste.append(
+            {
+                'Ate' : int(base),
+                'Base' : True
+            }, True
+        )
 
         teste.sort_values(
             by='Ate',
@@ -158,7 +194,7 @@ if uploaded_file is not None:
 
         #st.write('normalizado', teste)
 
-        arquivos_giga[nome+'_giga'] = teste.copy()
+        arquivos_giga[nome] = teste.copy()
 
     trocas = {
         'á': 'a',
@@ -176,94 +212,167 @@ if uploaded_file is not None:
         ' ': ''
     }
 
-    p = bkp.figure(
-        height=400,
-    )
+    #criação das figuras
 
-    p.yaxis.axis_label = 'Ticket Médio (BRL)'
-    p.xaxis.axis_label = 'Número de Clientes'
+    figuras = {}
 
-    plots_l = {}
-    plots_s = {}
-    legendas = {}
+    infos_grafico = {}
 
-    for chave, tabela in arquivos_giga.items():
+    infos_grafico['tm'] = [
+        'Ticket Médio esperado com evolução da base ativa',
+        'Ticket Médio (BRL)',
+        'tm',
+        'top_right',
+        "@tm{$ 0.00}"
+    ]
 
-        table_t = tabela
+    infos_grafico['cumvalorintervalo'] = [
+        'Receita mensal esperada com evolução da base ativa',
+        'Receita Mensal (BRL)',
+        'cumvalorintervalo',
+        'top_left',
+        "@cumvalorintervalo{$ 0,0}"
+    ]
 
-        #st.write(table_t)
+    hover_complexo = st.checkbox('Mostrar mais de uma informação ao mesmo tempo ao passar o mouse em cima dos pontos')
 
-        for coluna in table_t.columns:
-            coluna_corrigida = coluna
-            for crt_errado,crt_certo in trocas.items():
-                coluna_corrigida = coluna_corrigida.lower().replace(crt_errado, crt_certo)
+    for figura in [infos_grafico['tm'], infos_grafico['cumvalorintervalo']]:
 
-            table_t = table_t.rename(
-                    {
-                    f'{coluna}': f'{coluna_corrigida}'
-                    },
-                axis='columns'
+        figuras[figura[2]] = bkp.figure(
+            height=500,
+            title=figura[0]
+        )
+
+        figuras[figura[2]].title.text_font_size = '16pt'
+
+        figuras[figura[2]].yaxis.axis_label = figura[1]
+        figuras[figura[2]].xaxis.axis_label = 'Número de Clientes'
+
+        plots_l = {}
+        plots_s = {}
+        legendas = {}
+
+        for chave, tabela in arquivos_giga.items():
+
+            table_t = tabela
+
+            for coluna in table_t.columns:
+                coluna_corrigida = coluna
+                for crt_errado,crt_certo in trocas.items():
+                    coluna_corrigida = coluna_corrigida.lower().replace(crt_errado, crt_certo)
+
+                table_t = table_t.rename(
+                        {
+                        f'{coluna}': f'{coluna_corrigida}'
+                        },
+                    axis='columns'
+                    )
+
+            source = bkm.ColumnDataSource(data=table_t)
+
+            st.write(chave.split(' ')[0].upper())
+
+            if chave.split(' ')[0].upper() == 'XP':
+                cor = (np.random.randint(249-75,255),np.random.randint(193-75,255),np.random.randint(0,4+75))
+                st.write(chave, cor)
+            elif chave.split(' ')[0].upper() == 'BTG':
+                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
+            elif chave.split(' ')[0].upper() == 'MODAL':
+                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
+            elif chave.split(' ')[0].upper() == 'GENIAL':
+                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
+            elif chave.split(' ')[0].upper() == 'CLEAR':
+                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
+            elif chave.split(' ')[0].upper() == 'RICO':
+                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
+            elif chave.split(' ')[0].upper() == 'TORO':
+                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
+
+            plots_l[chave] = bkm.Line(
+                x='ate',
+                y=figura[2],
+                line_color = cor,
+                line_width=2
+            )
+
+            figuras[figura[2]].add_glyph(source_or_glyph=source, glyph=plots_l[chave])
+
+            plots_s[chave] = bkm.Scatter(
+                x='ate',
+                y=figura[2],
+                fill_color = cor,
+                size = 8
+            )
+
+            figuras[figura[2]].add_glyph(source_or_glyph=source, glyph=plots_s[chave])
+
+            legendas[chave] = LegendItem(label=chave, renderers=[figuras[figura[2]].renderers[2*(len(plots_l))-1]])
+
+            figuras[figura[2]].add_tools(
+                bkm.HoverTool(
+                    renderers = [figuras[figura[2]].renderers[2*(len(plots_l))-1]],
+                    tooltips=[
+                        ('Proposta', f"{chave}"),
+                        ('Intervalo', "@intervalo"),
+                        (figura[1], figura[4]),
+                        ('Número de Clientes', "@ate{0}"),
+                    ],
+                    line_policy='nearest',
+                    mode='vline' if hover_complexo else 'mouse'
+                )
+            )
+
+        if any([base_ativa[1] for base_ativa in arquivos.values()]) > 0:
+
+            for chave, tabela in arquivos_giga.items():
+
+                table_t = tabela[tabela['Base'] == True]
+
+                for coluna in table_t.columns:
+                    coluna_corrigida = coluna
+                    for crt_errado,crt_certo in trocas.items():
+                        coluna_corrigida = coluna_corrigida.lower().replace(crt_errado, crt_certo)
+
+                    table_t = table_t.rename(
+                            {
+                            f'{coluna}': f'{coluna_corrigida}'
+                            },
+                        axis='columns'
+                        )
+
+                source = bkm.ColumnDataSource(data=table_t)
+
+                cor = (255,0,0)
+
+                plots_s[chave+'base'] = bkm.Scatter(
+                    x='ate',
+                    y=figura[2],
+                    fill_color = cor,
+                    fill_alpha = 1,
+                    size = 12.5
                 )
 
-        source = bkm.ColumnDataSource(data=table_t)
+                figuras[figura[2]].add_glyph(source_or_glyph=source, glyph=plots_s[chave+'base'])
 
-        cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
+                legendas['Base Ativa'] = LegendItem(label='Base Ativa', renderers=[figuras[figura[2]].renderers[len(plots_s)]])
 
-        plots_l[chave] = bkm.Line(
-            x='ate',
-            y='tm',
-            line_color = cor,
-            line_width=2
+        legend = Legend(items=list(legendas.values()), location=figura[3])
+        figuras[figura[2]].add_layout(legend)
+
+        figuras[figura[2]].yaxis[0].ticker.desired_num_ticks = 7
+        figuras[figura[2]].xaxis[0].ticker.desired_num_ticks = 7
+        figuras[figura[2]].yaxis.formatter=NumeralTickFormatter(format="$ 0,0")
+        figuras[figura[2]].xaxis.formatter=NumeralTickFormatter(format="0")
+        figuras[figura[2]].xaxis.major_label_text_font_size = '12pt'
+        figuras[figura[2]].yaxis.major_label_text_font_size = '12pt'
+        #p.legend.click_policy = 'hide' #or hide
+
+        #if st.button('Gerar gráfico'):
+
+        st.bokeh_chart(
+            figuras[figura[2]],
+            use_container_width=True
         )
-
-        p.add_glyph(source_or_glyph=source, glyph=plots_l[chave])
-
-        plots_s[chave] = bkm.Scatter(
-            x='ate',
-            y='tm',
-            fill_color = cor,
-            size = 8
-        )
-
-        p.add_glyph(source_or_glyph=source, glyph=plots_s[chave])
-
-        legendas[chave] = LegendItem(label=chave, renderers=[p.renderers[2*(len(plots_l))-1]])
-
-        p.add_tools(
-            bkm.HoverTool(
-                renderers = [p.renderers[2*(len(plots_l)-1)]],
-                tooltips=[
-                    ('Proposta', f"{chave}"),
-                    ('Intervalo', "@intervalo"),
-                    ('Ticket Médio', "@tm{$ 0.00}"),
-                    ('Número de Clientes', "@ate{0}"),
-                ],
-                line_policy='nearest',
-                mode='vline'
-            )
-        )
-
-    legend = Legend(items=list(legendas.values()), location='top_right')
-    p.add_layout(legend)
-
-    p.yaxis[0].ticker.desired_num_ticks = 7
-    p.xaxis[0].ticker.desired_num_ticks = 7
-    p.yaxis.formatter=NumeralTickFormatter(format="$ 0.00")
-    p.xaxis.formatter=NumeralTickFormatter(format="0")
-    p.xaxis.major_label_text_font_size = '12pt'
-    p.yaxis.major_label_text_font_size = '12pt'
-    #p.legend.click_policy = 'mute' #or hide
-
-    #if st.button('Gerar gráfico'):
-
-    st.markdown("""
-        ### COMPARAÇÃO ENTRE PROPOSTAS
-    """)
-
-    st.bokeh_chart(
-        p,
-        use_container_width=True
-    )
 
 
 
