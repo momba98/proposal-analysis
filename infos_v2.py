@@ -83,7 +83,7 @@ uploaded_file = c1.file_uploader(
     accept_multiple_files=True
 )
 
-with open('btg 2.csv', 'r') as f:
+with open('ctg 2.csv', 'r') as f:
     dl_button = download_button(f.read(), 'arquivo_proposta_exemplo.csv', 'Baixe aqui o arquivo exemplo de proposta!')
     c1.markdown(dl_button, unsafe_allow_html=True)
 
