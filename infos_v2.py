@@ -77,19 +77,56 @@ c1.title("""
     Proposal Analysis
 """)
 
+c1.markdown(
+"""
+    *Padronização das análises de propostas de negócios*
+"""
+)
+
+c1.markdown("""---""",True)
+
+c2.image('belo.png', use_column_width=True)
+
+page_bg_img = '''
+<style>
+body {
+background-image: url("https://images.unsplash.com/photo-1542281286-9e0a16bb7366");
+background-size: cover;
+}
+</style>
+'''
+
+st.markdown(page_bg_img, unsafe_allow_html=True)
+
+c1.markdown(
+"""
+    **Instruções** \n
+    Cada proposta deverá ser construída em cima de um arquivo separado. \n
+    Baixe o arquivo .csv padrão, altere-o para ficar de acordo as informações da proposta, faça upload e tire conclusões a partir dos gráficos interativos.
+"""
+)
+
+with open('ctg 2.csv', 'r') as f:
+    dl_button = download_button(f.read(), 'arquivo_proposta_exemplo.csv', 'Clique aqui para baixar o arquivo exemplo de proposta')
+    c1.markdown(dl_button, unsafe_allow_html=True)
+
+c1.markdown("""
+    *É importante que você siga a lógica apresentada pelo arquivo de exemplo!*
+""")
+
+c1.markdown("""---""",True)
+
+c1.write('Se você já possui os arquivos .csv para análise, faça o upload. É permitido analisar mais de uma proposta ao mesmo tempo.')
+
 uploaded_file = c1.file_uploader(
     label='Faça upload dos arquivos de proposta',
     type='csv',
     accept_multiple_files=True
 )
 
-with open('ctg 2.csv', 'r') as f:
-    dl_button = download_button(f.read(), 'arquivo_proposta_exemplo.csv', 'Baixe aqui o arquivo exemplo de proposta!')
-    c1.markdown(dl_button, unsafe_allow_html=True)
-
 st.markdown("""---""",True)
 
-if uploaded_file is not None:
+if uploaded_file:
 
     arquivos = {}
     arquivos_giga = {}
@@ -98,18 +135,24 @@ if uploaded_file is not None:
         nome_arquivo = arquivo.name.replace('_',' ')[:-4]
         arquivos[nome_arquivo] = pd.read_csv(arquivo, sep=';', decimal=',')
 
-    for index,nome in arquivos.items():
-        delete = st.text_input(f'Qual é a base ativa de {index}?')
-        if delete:
-            arquivos[index] = (arquivos[index],delete)
-            #to_be_deleted.add(delete)
-        if not delete:
-            arquivos[index] = (arquivos[index],0)
+    col1,col2,col3 = st.beta_columns(3)
 
-    n = st.selectbox(
-        'Intervalo de validação dos valores de TM e Receita: ',
-        options=['',100,500,1000,2500,5000,10000],
-    )
+    with col1.beta_expander('Validar base ativa'):
+
+        for index,nome in arquivos.items():
+            delete = st.text_input(f'Qual é a base ativa de {index}?')
+            if delete:
+                arquivos[index] = (arquivos[index],delete)
+                #to_be_deleted.add(delete)
+            if not delete:
+                arquivos[index] = (arquivos[index],0)
+
+    with col2.beta_expander('Aumentar amostragem dos dados'):
+
+        n = st.selectbox(
+            'Intervalo de validação dos valores de TM e Receita: ',
+            options=['',100,500,1000,2500,5000,10000],
+        )
 
     for nome,(tabela,base) in arquivos.items():
 
@@ -234,7 +277,16 @@ if uploaded_file is not None:
         "@cumvalorintervalo{$ 0,0}"
     ]
 
-    hover_complexo = st.checkbox('Mostrar mais de uma informação ao mesmo tempo ao passar o mouse em cima dos pontos')
+    with col3.beta_expander('Configuração dos gráficos'):
+
+        hover_complexo = st.checkbox('Mostrar mais de uma caixa de informação ao mesmo tempo ao passar o mouse em cima do gráfico')
+
+        if st.button('Trocar cores dos estudos'):
+            pass
+
+    cores = {}
+
+    #with st.beta_expander('Mostrar gráficos'):
 
     for figura in [infos_grafico['tm'], infos_grafico['cumvalorintervalo']]:
 
@@ -270,28 +322,16 @@ if uploaded_file is not None:
 
             source = bkm.ColumnDataSource(data=table_t)
 
-            st.write(chave.split(' ')[0].upper())
+            #if chave.split(' ')[0].upper() == 'XP':
+            #    cor = (np.random.randint(249-75,255),np.random.randint(193-75,255),np.random.randint(0,4+75))
 
-            if chave.split(' ')[0].upper() == 'XP':
-                cor = (np.random.randint(249-75,255),np.random.randint(193-75,255),np.random.randint(0,4+75))
-                st.write(chave, cor)
-            elif chave.split(' ')[0].upper() == 'BTG':
-                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
-            elif chave.split(' ')[0].upper() == 'MODAL':
-                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
-            elif chave.split(' ')[0].upper() == 'GENIAL':
-                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
-            elif chave.split(' ')[0].upper() == 'CLEAR':
-                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
-            elif chave.split(' ')[0].upper() == 'RICO':
-                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
-            elif chave.split(' ')[0].upper() == 'TORO':
-                cor = (np.random.randint(50,255),np.random.randint(50,255),np.random.randint(50,255))
+            if figura[2] == 'tm':
+                cores[chave] = (np.random.randint(25,235),np.random.randint(25,235),np.random.randint(25,235))
 
             plots_l[chave] = bkm.Line(
                 x='ate',
                 y=figura[2],
-                line_color = cor,
+                line_color = cores[chave],
                 line_width=2
             )
 
@@ -300,7 +340,7 @@ if uploaded_file is not None:
             plots_s[chave] = bkm.Scatter(
                 x='ate',
                 y=figura[2],
-                fill_color = cor,
+                fill_color = cores[chave],
                 size = 8
             )
 
@@ -368,6 +408,7 @@ if uploaded_file is not None:
         #p.legend.click_policy = 'hide' #or hide
 
         #if st.button('Gerar gráfico'):
+
 
         st.bokeh_chart(
             figuras[figura[2]],
